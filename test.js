@@ -11,9 +11,11 @@ var println = function (msg) {
 var Class = (function () {
     "use strict";
 
-    var emptyFunc = function () { };
+    var emptyInit = function () {
+        this.superInit(arguments);
+    };
 
-    var applyProps = function (from, to) {
+    var inheritProperties = function (to, from) {
         for (var prop in from) {
             if (from.hasOwnProperty(prop) && !to.hasOwnProperty(prop)) {
                 to[prop] = from[prop];
@@ -22,7 +24,12 @@ var Class = (function () {
     };
 
     var superInit = function (args) {
-        this.__super.init.apply(this, args);
+        var init = this.__super.init;
+        if (init) {
+            init.apply(this, args);
+        } else {
+            this.__class.superClass.apply(this, args);
+        }
     };
 
     var superCall = function (methodName, args) {
@@ -39,25 +46,18 @@ var Class = (function () {
         return this.__class;
     };
 
-    var createConstructor = function (className, superClass) {
+    var createConstructor = function (className) {
         var classDefiner = new Function("return function " + className
                 + "() { this.init.apply(this, arguments); };");
-        var newClass = classDefiner();
-        newClass.superClass = superClass;
-        return newClass;
+        return classDefiner();
     };
 
-    var getPrototype = function (newClass, newPrototype, superClass) {
-        var superPrototype = superClass.prototype;
-        applyProps(superPrototype, newPrototype);
-
+    var applyAuxiliaryProperties = function (newPrototype, newClass) {
         newPrototype.__class = newClass;
-        newPrototype.__super = superPrototype;
+        newPrototype.__super = newClass.superClass.prototype;
         newPrototype.superInit = superInit;
         newPrototype.superCall = superCall;
         newPrototype.getClass = getClass;
-
-        return newPrototype;
     };
 
     return {
@@ -81,21 +81,36 @@ var Class = (function () {
                     break;
 
                 default:
-                    throw new Error("Unexpected argument number - expected either 2 or 3 arguments");
+                    throw new Error("Unexpected argument number - expected either 2 or 3 arguments"
+                           + " - (className, newPrototype) or (className, superClass, newPrototype)");
             }
 
             // Setup default argument values.
+            superClass || (superClass = Object);
+            newPrototype || (newPrototype = {});
+            newPrototype.init || (newPrototype.init = emptyInit);
+
+            // Do argument validation.
             if (!className) {
                 throw new Error("Class must have a name!");
             }
 
-            superClass || (superClass = Object);
-            newPrototype || (newPrototype = {});
-            newPrototype.init || (newPrototype.init = emptyFunc);
+            if (typeof superClass !== "function") {
+                throw new Error("Expected superClass to be a function, instead received " + typeof superClass);
+            }
+
+            if (typeof newPrototype !== "object") {
+                throw new Error("Expected newPrototype to be an object, instead received " + typeof newPrototype);
+            }
 
             // Begin actual class definition creation.
-            var newClass = createConstructor(className, superClass);
-            newClass.prototype = getPrototype(newClass, newPrototype, superClass);
+            var newClass = createConstructor(className);
+            newClass.superClass = superClass;
+
+            // Setup the prototype.
+            inheritProperties(newPrototype, superClass.prototype);
+            applyAuxiliaryProperties(newPrototype, newClass);
+            newClass.prototype = newPrototype;
 
             return newClass;
         }
@@ -104,8 +119,6 @@ var Class = (function () {
 
 var main = function () {
     println("Hello World!");
-
-    //var MyClass = Class.define("MyClass", BaseClass, {});
 
     var SuperClass = Class.define("SuperClass", {
         init: function () {
@@ -116,6 +129,12 @@ var main = function () {
             println("tralala");
         }
     });
+
+    var RawClass = function RawClass() {
+        this.prop = "xxxx";
+    };
+
+    RawClass.prototype.doRaw = function () { println("From raw"); };
 
     var MyClass = Class.define("MyClass", SuperClass, {
         init: function () {
@@ -135,4 +154,15 @@ var main = function () {
 
     obj.superMethod();
 
+    var FromRaw = Class.define("FromRaw", RawClass, {
+        doRaw: function () {
+            this.superCall("doRaw", arguments);
+
+            println("addition to raw");
+        }
+    });
+
+    var raw = new FromRaw();
+    println(raw.prop);
+    raw.doRaw();
 };
