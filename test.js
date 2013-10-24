@@ -23,23 +23,25 @@ var Class = (function () {
         }
     };
 
-    var superInit = function (args) {
-        var init = this.__super.init;
-        if (init) {
-            init.apply(this, args);
-        } else {
-            this.__class.superClass.apply(this, args);
-        }
+    var superInit = function (args, superClass) {
+        var init = this.__super.init || this.__super.constructor;
+        var realSuper = this.__super;
+        this.__super = realSuper.__super;
+        init.apply(this, args);
+        this.__super = realSuper;
     };
 
     var superCall = function (methodName, args) {
         var superMethod = this.__super[methodName];
         if (!superMethod) {
             throw new Error("Object of class " + this.getClass().name + " attempted to call super-class method "
-                + methodName + ". Such method does not exist in " + this.getClass().superClass.name + " class.");
+                + methodName + ". Such method does not exist in " + superClass.name + " class.");
         }
 
+        var realSuper = this.__super;
+        this.__super = realSuper.__super;
         superMethod.apply(this, args);
+        this.__super = realSuper;
     };
 
     var getClass = function () {
@@ -52,11 +54,12 @@ var Class = (function () {
         return classDefiner();
     };
 
-    var applyAuxiliaryProperties = function (newPrototype, newClass) {
+    var applyAuxiliaryProperties = function (newPrototype, newClass, superClass) {
         newPrototype.__class = newClass;
         newPrototype.__super = newClass.superClass.prototype;
         newPrototype.superInit = superInit;
         newPrototype.superCall = superCall;
+
         newPrototype.getClass = getClass;
     };
 
@@ -109,7 +112,7 @@ var Class = (function () {
 
             // Setup the prototype.
             inheritProperties(newPrototype, superClass.prototype);
-            applyAuxiliaryProperties(newPrototype, newClass);
+            applyAuxiliaryProperties(newPrototype, newClass, superClass);
             newClass.prototype = newPrototype;
 
             return newClass;
@@ -123,6 +126,7 @@ var main = function () {
     var SuperClass = Class.define("SuperClass", {
         init: function () {
             this.superTest = " from super class";
+            println("SuperClass.init");
         },
 
         superMethod: function () {
@@ -140,6 +144,7 @@ var main = function () {
         init: function () {
             this.superInit(arguments);
             this.test = " from class";
+            println("MyClass.init");
         },
 
         superMethod: function () {
@@ -148,11 +153,6 @@ var main = function () {
         }
     });
 
-    var obj = new MyClass();
-    println("This is " + obj.test);
-    println("This is " + obj.superTest);
-
-    obj.superMethod();
 
     var FromRaw = Class.define("FromRaw", RawClass, {
         doRaw: function () {
@@ -165,4 +165,21 @@ var main = function () {
     var raw = new FromRaw();
     println(raw.prop);
     raw.doRaw();
+
+    var NextLayer = Class.define("NextLayer", MyClass, {
+        init: function () {
+            this.superInit(arguments);
+            println("NextLayer.init");
+        },
+
+        superMethod: function () {
+            println("Still works");
+        }
+    });
+
+    var obj = new NextLayer();
+    println("This is " + obj.test);
+    println("This is " + obj.superTest);
+
+    obj.superMethod();
 };
