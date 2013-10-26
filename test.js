@@ -23,7 +23,7 @@ var Class = (function () {
         }
     };
 
-    var superInit = function (args, superClass) {
+    var superInit = function (args) {
         var init = this.__super.init || this.__super.constructor;
         var realSuper = this.__super;
         this.__super = realSuper.__super;
@@ -152,7 +152,6 @@ var main = function () {
             this.superCall("superMethod", arguments);
         }
     });
-
 
     var FromRaw = Class.define("FromRaw", RawClass, {
         doRaw: function () {
