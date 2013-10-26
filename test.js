@@ -11,6 +11,44 @@ var println = function (msg) {
 var Class = (function () {
     "use strict";
 
+    var superInit = function (args) {
+        var realSuper = this.__super;
+        this.__super = realSuper.superClass;
+        try {
+            realSuper.apply(this, args);
+        } finally {
+            this.__super = realSuper;
+        }
+    };
+
+    var superCall = function (methodName, args) {
+        var realSuper = this.__super;
+        var superMethod = realSuper.prototype[methodName];
+        if (!superMethod) {
+            throw new Error("Object of class " + this.getClass().name + " attempted to call super-class method "
+                + methodName + ". Such method does not exist in " + superClass.name + " class.");
+        }
+
+        this.__super = realSuper.superClass;
+        try {
+            superMethod.apply(this, args);
+        } finally {
+            this.__super = realSuper;
+        }
+    };
+
+    var getClass = function () {
+        return this.__class;
+    };
+
+    var addStatics = function (statics) {
+        for (var prop in statics) {
+            if (statics.hasOwnProperty(prop)) {
+                this[prop] = statics[prop];
+            }
+        }
+    };
+
     var emptyInit = function () {
         this.superInit(arguments);
     };
@@ -23,44 +61,28 @@ var Class = (function () {
         }
     };
 
-    var superInit = function (args) {
-        var init = this.__super.init || this.__super.constructor;
-        var realSuper = this.__super;
-        this.__super = realSuper.__super;
-        init.apply(this, args);
-        this.__super = realSuper;
-    };
-
-    var superCall = function (methodName, args) {
-        var superMethod = this.__super[methodName];
-        if (!superMethod) {
-            throw new Error("Object of class " + this.getClass().name + " attempted to call super-class method "
-                + methodName + ". Such method does not exist in " + superClass.name + " class.");
-        }
-
-        var realSuper = this.__super;
-        this.__super = realSuper.__super;
-        superMethod.apply(this, args);
-        this.__super = realSuper;
-    };
-
-    var getClass = function () {
-        return this.__class;
-    };
-
-    var createConstructor = function (className) {
-        var classDefiner = new Function("return function " + className
-                + "() { this.init.apply(this, arguments); };");
-        return classDefiner();
+    var createConstructor = function (className, init) {
+        var classDefiner = new Function("init", "return function " + className
+                + "() { init.apply(this, arguments); };");
+        return classDefiner(init);
     };
 
     var applyAuxiliaryProperties = function (newPrototype, newClass, superClass) {
         newPrototype.__class = newClass;
-        newPrototype.__super = newClass.superClass.prototype;
+        newPrototype.__super = newClass.superClass;
         newPrototype.superInit = superInit;
         newPrototype.superCall = superCall;
-
         newPrototype.getClass = getClass;
+    };
+
+    var inheritPrototype = function (newClass, newPrototype, superClass) {
+        // Setup the prototype.
+        inheritProperties(newPrototype, superClass.prototype);
+        applyAuxiliaryProperties(newPrototype, newClass, superClass);
+
+        // Get rid of the init method from the pototype - it should never be called directly.
+        delete newPrototype.init;
+        newClass.prototype = newPrototype;
     };
 
     return {
@@ -107,20 +129,17 @@ var Class = (function () {
             }
 
             // Begin actual class definition creation.
-            var newClass = createConstructor(className);
+            var newClass = createConstructor(className, newPrototype.init);
             newClass.superClass = superClass;
 
-            // Setup the prototype.
-            inheritProperties(newPrototype, superClass.prototype);
-            applyAuxiliaryProperties(newPrototype, newClass, superClass);
-            newClass.prototype = newPrototype;
+            inheritPrototype(newClass, newPrototype, superClass);
 
             return newClass;
         }
     };
 }());
 
-var main = function () {
+var test1 = function () {
     println("Hello World!");
 
     var SuperClass = Class.define("SuperClass", {
@@ -181,4 +200,45 @@ var main = function () {
     println("This is " + obj.superTest);
 
     obj.superMethod();
+};
+
+var test2 = function () {
+    var Base = Class.define("Base", {
+        init: function () {
+            this.superInit();
+            println("Base.init");
+        },
+
+        foo: function () {
+            println("Base.foo: " + this.getClass().name);
+        }
+    });
+
+    var Child = Class.define("Child", Base, {
+        init: function () {
+            this.superInit();
+            println("Child.init");
+        },
+
+        foo: function () {
+            println("Child.foo: " + this.getClass().name);
+        }
+    });
+
+    var GrandChild = Class.define("GrandChild", Child, {
+        init: function () {
+            this.superInit();
+            println("GrandChild.init");
+        },
+
+        foo: function () {
+            println("GrandChild.foo: " + this.getClass().name);
+        }
+    });
+
+    new GrandChild();
+};
+
+var main = function () {
+    test2();
 };
